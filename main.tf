@@ -3,7 +3,7 @@
 ##################################################
 
 provider "azurerm" {
-  features {}
+ features {}
 }
 
 data "azurerm_subscription" "current" {}
@@ -17,28 +17,28 @@ data "azurerm_kubernetes_cluster_version" "current" {
 # locals for tagging
 ##################################################
 locals {
-  common_tags = {
-    Owner       = var.owner
-    Environment = var.environment
-    Cost_center = var.cost_center
-    Application = var.app_name
-  }
+ common_tags = {
+   Owner       = var.owner
+   Environment = var.environment
+   Cost_center = var.cost_center
+   Application = var.app_name
+ }
 }
 
 ##################################################
 # Azure resource group
 ##################################################
 resource "azurerm_resource_group" "rg" {
-  name     = "${var.environment}-${var.app_name}-rg"
-  location = var.location
+ name     = "${var.environment}-${var.app_name}-rg"
+ location = var.location
 }
 
 ##################################################
 # Azure Vnet
 ##################################################
 data "azurerm_virtual_network" "vnet" {
-  name                = "${var.environment}-${var.app_name}-vnet"
-  resource_group_name = "${var.environment}-${var.app_name}-network-rg"
+ name                = "${var.environment}-${var.app_name}-vnet"
+ resource_group_name = "${var.environment}-${var.app_name}-network-rg"
 }
 
 
@@ -46,19 +46,19 @@ data "azurerm_virtual_network" "vnet" {
 # Azure Subnet
 ##################################################
 data "azurerm_subnet" "subnet" {
-  name                 = "${var.environment}-${var.app_name}-subnet"
-  virtual_network_name = data.azurerm_virtual_network.vnet.name
-  resource_group_name  = data.azurerm_virtual_network.vnet.resource_group_name
+ name                 = "${var.environment}-${var.app_name}-subnet"
+ virtual_network_name = "${data.azurerm_virtual_network.vnet.name}"
+ resource_group_name  = "${data.azurerm_virtual_network.vnet.resource_group_name}"
 }
 
 ##################################################
 # Application security group
 ##################################################
 resource "azurerm_application_security_group" "asg" {
-  name                = "${var.environment}-${var.app_name}-asg"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.rg.name
-  tags                = local.common_tags
+ name                = "${var.environment}-${var.app_name}-asg"
+ location            = var.location
+ resource_group_name = azurerm_resource_group.rg.name
+ tags                = local.common_tags
 }
 
 
@@ -67,43 +67,28 @@ resource "azurerm_application_security_group" "asg" {
 ##################################################
 
 resource "azurerm_kubernetes_cluster" "aks" {
-  name                             = "${var.environment}-${var.app_name}-cluster"
-  resource_group_name              = azurerm_resource_group.rg.name
-  location                         = var.location
-  node_resource_group              = "${azurerm_resource_group.rg.name}-nrg"
-  dns_prefix                       = "${var.app_name}-dns"
+  name                = "${var.environment}-${var.app_name}-cluster"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = var.location
+  node_resource_group = "${azurerm_resource_group.rg.name}-nrg"
+  dns_prefix          = "${var.app_name}-dns"
   http_application_routing_enabled = var.application_routing_enabled
+  kubernetes_version = var.k8s_version
 
   identity {
     type = "SystemAssigned"
   }
 
-  addon_profile {
-    azure_policy {
-      enabled = true
-    }
-    aci_connector_linux {
-      enabled = true
-    }
-    kube_dashboard {
-      enabled = true
-    }
-    oms_agent {
-      enabled                    = true
-      log_analytics_workspace_id = "laya_funapp_workspace"
-    }
-  }
-
   default_node_pool {
     name                 = "default"
-    vm_size              = "Standard_DS2_v3"
-    orchestrator_version = data.azurerm_kubernetes_cluster_versions.current.latest_version
+    vm_size              = var.default_vm_size
+    #orchestrator_version = data.azurerm_kubernetes_cluster_versions.current.latest_version
     zones                = [1, 2, 3]
-    enable_auto_scaling  = true
-    node_count           = 1
-    max_count            = 2
-    min_count            = 1
-    os_disk_size_gb      = 30
+    enable_auto_scaling  = var.enable_auto_scaling
+    node_count           = var.default_node_count
+    max_count            = var.default_max_count
+    min_count            = var.default_min_count
+    os_disk_size_gb      = var.default_disk_size
     type                 = "VirtualMachineScaleSets"
 
     upgrade_settings {
@@ -111,21 +96,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
     }
 
     node_labels = {
-      "nodepool-type" = "system"
-      "environment"   = "dev"
-      "nodepoolos"    = "linux"
-      "app"           = "system-apps"
-    }
+      "nodepool-type"    = "system"
+      "environment"      = "dev"
+      "nodepoolos"       = "linux"
+      "app"              = "system-apps" 
+    } 
 
     tags = local.common_tags
-  }
-
-  linux_profile {
-    admin_username = var.username
-
-    ssh_key {
-      key_data = jsondecode(azapi_resource_action.ssh_public_key_gen.output).publicKey
-    }
   }
 
   network_profile {
@@ -133,6 +110,30 @@ resource "azurerm_kubernetes_cluster" "aks" {
     network_policy    = "azure"
     load_balancer_sku = "standard"
   }
+
+  # addon_profile {
+  #   kube_dashboard {
+  #     enabled = true
+  #   }
+  #   aci_connector_linux {
+  #     enabled = true
+  #   }
+  #   azure_policy {
+  #     enabled = true
+  #   }
+  #   oms_agent {
+  #     enabled                    = true
+  #     log_analytics_workspace_id = "laya_funapp_workspace"
+  #   }
+  # }
+
+  # linux_profile {
+  #   admin_username = var.username
+
+  #   ssh_key {
+  #     key_data = jsondecode(azapi_resource_action.ssh_public_key_gen.output).publicKey
+  #   }
+  # }
 }
 
 
@@ -242,7 +243,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 ##################################################
 
 resource "local_file" "kubeconfig" {
-  depends_on = [azurerm_kubernetes_cluster.aks]
-  filename   = "kubeconfig"
-  content    = azurerm_kubernetes_cluster.aks.kube_config_raw
+  depends_on = [ azurerm_kubernetes_cluster.aks ]
+  filename = "kubeconfig"
+  content = azurerm_kubernetes_cluster.aks.kube_config_raw
 }

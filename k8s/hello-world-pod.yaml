@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Pod
+metadata:
+  name: hello-world
+  namespace: development
+spec:
+  containers:
+    - name: hello-world
+      image: hello-world:latest
+      ports:
+        - containerPort: 8080

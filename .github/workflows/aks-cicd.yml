@@ -35,27 +35,38 @@ jobs:
 
       - name: Deploy Workloads
         run: |
-          kubectl apply -f hello-world.yaml
+          cd ./k8s/
+          kubectl apply -f hello-world-namespace.yaml
+  
+      - name: Deploy Workloads
+        run: |
+          cd ./k8s/
+          kubectl apply -f hello-world-deployment.yaml
 
       - name: Check Application Status
         run: |
+          cd ./k8s/
           kubectl get pods -n development
 
       - name: Check Application Readiness
         run: |
+          cd ./k8s/
           kubectl get pods -n development --field-selector=status.phase=Running
 
-      - name: Perform Health Check
-        run: |
-          curl http:/<ip>/health
+    #   - name: Perform Health Check
+    #     run: |
+    #       curl http:/<ip>/health
 
       - name: Scale Application Pods
         if: ${{ github.event_name == 'push' && github.ref == 'refs/head/main' && inputs.scale-application == 'true' }}
-        run: kubectl scale deployment hello-world --replicas=3 -n development
+        run: |
+          cd ./k8s/
+          kubectl scale deployment hello-world --replicas=3 -n development
 
       - name: Pod logs and events
         if: ${{ github.event_name == 'push' && github.ref == 'refs/head/main' && inputs.logs-events == 'true' }}
         run: |
+          cd ./k8s/
           kubectl get pods -n development
           kubectl logs -n development hello-world
           kubectl describe pods -n development
